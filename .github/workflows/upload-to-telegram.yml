@@ -21,10 +21,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      - name: Send files to Telegram
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
+      - name: Extract Covers
         run: |
           mkdir -p covers
 
@@ -36,43 +33,90 @@ jobs:
 
             echo "Extracting cover from: $file"
 
-            ffmpeg -y -i "$file" -an -map 0:v:0 -c:v mjpeg "$cover" 2>/dev/null || true
-
-            if [ -f "$cover" ]; then
-              echo "Cover found. Sending audio with thumbnail."
-
-              if curl -f -s \
-                -F "chat_id=$CHAT_ID" \
-                -F "audio=@$file" \
-                -F "thumbnail=@$cover" \
-                "https://api.telegram.org/bot${BOT_TOKEN}/sendAudio" > /dev/null; then
-
-                echo "Sent successfully: $file"
-                rm "$file"
-                rm "$cover"
-
-              else
-                echo "Failed to send: $file"
-                exit 1
-              fi
-
-            else
-              echo "No cover found. Sending audio without thumbnail."
-
-              if curl -f -s \
-                -F "chat_id=$CHAT_ID" \
-                -F "audio=@$file" \
-                "https://api.telegram.org/bot${BOT_TOKEN}/sendAudio" > /dev/null; then
-
-                echo "Sent successfully: $file"
-                rm "$file"
-
-              else
-                echo "Failed to send: $file"
-                exit 1
-              fi
-            fi
+            ffmpeg -y \
+              -i "$file" \
+              -an \
+              -map 0:v:0 \
+              -c:v mjpeg \
+              "$cover" 2>/dev/null || true
           done
+
+      - name: Install Python Requests
+        run: |
+          pip install requests
+
+      - name: Send files to Telegram
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: |
+          cat > send.py << 'PY'
+          import os
+          import glob
+          import requests
+
+          token = os.environ["BOT_TOKEN"]
+          chat_id = os.environ["CHAT_ID"]
+
+          url = f"https://api.telegram.org/bot{token}/sendAudio"
+
+          for file in glob.glob("uploads/*.mp3"):
+
+              filename = os.path.splitext(
+                  os.path.basename(file)
+              )[0]
+
+              cover = f"covers/{filename}.jpg"
+
+              data = {
+                  "chat_id": chat_id,
+                  "caption": "@TRTOPMUSIC"
+              }
+
+              audio = open(file, "rb")
+
+              files = {
+                  "audio": audio
+              }
+
+              cover_file = None
+
+              if os.path.exists(cover):
+                  cover_file = open(cover, "rb")
+                  files["thumbnail"] = cover_file
+
+              try:
+                  response = requests.post(
+                      url,
+                      data=data,
+                      files=files
+                  )
+
+                  print(response.text)
+
+                  result = response.json()
+
+                  if result.get("ok"):
+                      print(f"Sent successfully: {file}")
+
+                      os.remove(file)
+
+                      if os.path.exists(cover):
+                          os.remove(cover)
+
+                  else:
+                      raise Exception(
+                          f"Telegram error: {response.text}"
+                      )
+
+              finally:
+                  audio.close()
+
+                  if cover_file:
+                      cover_file.close()
+          PY
+
+          python send.py
 
       - name: Delete sent files from repository
         run: |
@@ -80,5 +124,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add -A
+
           git commit -m "Remove processed files" || exit 0
+
           git push
