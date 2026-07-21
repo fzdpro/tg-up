@@ -24,15 +24,19 @@ jobs:
           for file in uploads/*.mp3; do
             [ -e "$file" ] || continue
 
-            if curl -f -s \
+            echo "Sending: $file"
+
+            response=$(curl -s \
               -F "chat_id=$CHAT_ID" \
               -F "audio=@$file" \
               --form-string "caption=@TRTOPMUSIC" \
-              "https://api.telegram.org/bot${BOT_TOKEN}/sendAudio" > /dev/null; then
+              "https://api.telegram.org/bot${BOT_TOKEN}/sendAudio")
 
+            echo "$response"
+
+            if echo "$response" | grep -q '"ok":true'; then
               echo "Sent successfully: $file"
               rm "$file"
-
             else
               echo "Failed to send: $file"
               exit 1
