@@ -27,7 +27,7 @@ jobs:
             if curl -f -s \
               -F "chat_id=$CHAT_ID" \
               -F "audio=@$file" \
-              -F "caption=@TRTOPMUSIC" \
+              --form-string "caption=@TRTOPMUSIC" \
               "https://api.telegram.org/bot${BOT_TOKEN}/sendAudio" > /dev/null; then
 
               echo "Sent successfully: $file"
