@@ -24,19 +24,16 @@ jobs:
           for file in uploads/*.mp3; do
             [ -e "$file" ] || continue
 
-            echo "Sending: $file"
-
-            response=$(curl -s \
-              -F "chat_id=$CHAT_ID" \
-              -F "audio=@$file" \
-              --form-string "caption=@TRTOPMUSIC" \
+            response=$(curl -s -w "%{http_code}" \
+              -F chat_id="$CHAT_ID" \
+              -F audio=@"$file" \
               "https://api.telegram.org/bot${BOT_TOKEN}/sendAudio")
 
-            echo "$response"
+            http_code="${response: -3}"
 
-            if echo "$response" | grep -q '"ok":true'; then
-              echo "Sent successfully: $file"
+            if [ "$http_code" = "200" ]; then
               rm "$file"
+              echo "Sent and deleted: $file"
             else
               echo "Failed to send: $file"
               exit 1
