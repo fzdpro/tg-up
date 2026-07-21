@@ -24,10 +24,11 @@ jobs:
           for file in uploads/*.mp3; do
             [ -e "$file" ] || continue
 
-            response=$(curl -s -w "%{http_code}" \
-              -F chat_id="$CHAT_ID" \
-              -F audio=@"$file" \
-              "https://api.telegram.org/bot${BOT_TOKEN}/sendAudio")
+response=$(curl -s -w "%{http_code}" \
+  -F "chat_id=$CHAT_ID" \
+  -F "audio=@$file" \
+  -F "caption=@TRTOPMUSIC" \
+  "https://api.telegram.org/bot${BOT_TOKEN}/sendAudio")
 
             http_code="${response: -3}"
 
