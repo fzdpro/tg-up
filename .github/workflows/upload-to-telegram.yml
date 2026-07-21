@@ -16,27 +16,61 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
       - name: Send files to Telegram
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
         run: |
+          mkdir -p covers
+
           for file in uploads/*.mp3; do
             [ -e "$file" ] || continue
 
-            response=$(curl -s -w "%{http_code}" \
-              -F chat_id="$CHAT_ID" \
-              -F audio=@"$file" \
-              "https://api.telegram.org/bot${BOT_TOKEN}/sendAudio")
+            filename=$(basename "$file" .mp3)
+            cover="covers/${filename}.jpg"
 
-            http_code="${response: -3}"
+            echo "Extracting cover from: $file"
 
-            if [ "$http_code" = "200" ]; then
-              rm "$file"
-              echo "Sent and deleted: $file"
+            ffmpeg -y -i "$file" -an -map 0:v:0 -c:v mjpeg "$cover" 2>/dev/null || true
+
+            if [ -f "$cover" ]; then
+              echo "Cover found. Sending audio with thumbnail."
+
+              if curl -f -s \
+                -F "chat_id=$CHAT_ID" \
+                -F "audio=@$file" \
+                -F "thumbnail=@$cover" \
+                "https://api.telegram.org/bot${BOT_TOKEN}/sendAudio" > /dev/null; then
+
+                echo "Sent successfully: $file"
+                rm "$file"
+                rm "$cover"
+
+              else
+                echo "Failed to send: $file"
+                exit 1
+              fi
+
             else
-              echo "Failed to send: $file"
-              exit 1
+              echo "No cover found. Sending audio without thumbnail."
+
+              if curl -f -s \
+                -F "chat_id=$CHAT_ID" \
+                -F "audio=@$file" \
+                "https://api.telegram.org/bot${BOT_TOKEN}/sendAudio" > /dev/null; then
+
+                echo "Sent successfully: $file"
+                rm "$file"
+
+              else
+                echo "Failed to send: $file"
+                exit 1
+              fi
             fi
           done
 
