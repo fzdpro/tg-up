@@ -5,6 +5,9 @@ on:
     paths:
       - "uploads/**"
 
+permissions:
+  contents: write
+
 jobs:
   send:
     runs-on: ubuntu-latest
@@ -18,8 +21,30 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
         run: |
-          for file in uploads/*; do
-            curl -F chat_id="$CHAT_ID" \
-                 -F audio=@"$file" \
-                 "https://api.telegram.org/bot${BOT_TOKEN}/sendAudio"
+          for file in uploads/*.mp3; do
+            [ -e "$file" ] || continue
+
+            response=$(curl -s -w "%{http_code}" \
+              -F chat_id="$CHAT_ID" \
+              -F audio=@"$file" \
+              "https://api.telegram.org/bot${BOT_TOKEN}/sendAudio")
+
+            http_code="${response: -3}"
+
+            if [ "$http_code" = "200" ]; then
+              rm "$file"
+              echo "Sent and deleted: $file"
+            else
+              echo "Failed to send: $file"
+              exit 1
+            fi
           done
+
+      - name: Delete sent files from repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+          git commit -m "Remove processed files" || exit 0
+          git push
