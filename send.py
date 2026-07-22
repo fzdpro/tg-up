@@ -7,8 +7,10 @@ from mutagen import File
 token = os.environ["BOT_TOKEN"]
 chat_id = os.environ["CHAT_ID"]
 
-url = f"https://api.telegram.org/bot{token}/sendAudio"
+audio_url = f"https://api.telegram.org/bot{token}/sendAudio"
+voice_url = f"https://api.telegram.org/bot{token}/sendVoice"
 
+# ارسال فایل‌های MP3
 for file in glob.glob("uploads/*.mp3"):
 
     filename = os.path.splitext(
@@ -17,7 +19,6 @@ for file in glob.glob("uploads/*.mp3"):
 
     cover = f"covers/{filename}.jpg"
 
-    # خواندن Artist و Title
     try:
         tags = EasyID3(file)
 
@@ -37,7 +38,6 @@ for file in glob.glob("uploads/*.mp3"):
         artist = "Unknown Artist"
         title = filename
 
-    # خواندن مدت زمان آهنگ
     audio_info = File(file)
 
     if audio_info and audio_info.info:
@@ -71,7 +71,7 @@ for file in glob.glob("uploads/*.mp3"):
 
     try:
         response = requests.post(
-            url,
+            audio_url,
             data=data,
             files=files
         )
@@ -83,7 +83,7 @@ for file in glob.glob("uploads/*.mp3"):
         if result.get("ok"):
 
             print(
-                f"Sent successfully: {file}"
+                f"MP3 sent successfully: {file}"
             )
 
             os.remove(file)
@@ -103,4 +103,49 @@ for file in glob.glob("uploads/*.mp3"):
 
         if cover_file:
             cover_file.close()
+
+
+# ارسال فایل‌های OGG به‌صورت Voice
+for file in glob.glob("uploads/*.ogg"):
+
+    print(f"Sending voice: {file}")
+
+    voice = open(file, "rb")
+
+    files = {
+        "voice": voice
+    }
+
+    data = {
+        "chat_id": chat_id
+    }
+
+    try:
+        response = requests.post(
+            voice_url,
+            data=data,
+            files=files
+        )
+
+        print(response.text)
+
+        result = response.json()
+
+        if result.get("ok"):
+
+            print(
+                f"Voice sent successfully: {file}"
+            )
+
+            os.remove(file)
+
+        else:
+
+            raise Exception(
+                f"Telegram error: {response.text}"
+            )
+
+    finally:
+
+        voice.close()
 
