@@ -1,6 +1,7 @@
 import os
 import glob
 import requests
+from mutagen.easyid3 import EasyID3
 
 token = os.environ["BOT_TOKEN"]
 chat_id = os.environ["CHAT_ID"]
@@ -15,8 +16,33 @@ for file in glob.glob("uploads/*.mp3"):
 
     cover = f"covers/{filename}.jpg"
 
+    # خواندن تگ‌های MP3
+    try:
+        tags = EasyID3(file)
+
+        artist = tags.get(
+            "artist",
+            ["Unknown Artist"]
+        )[0]
+
+        title = tags.get(
+            "title",
+            [filename]
+        )[0]
+
+    except Exception as e:
+        print(f"Could not read tags: {e}")
+
+        artist = "Unknown Artist"
+        title = filename
+
+    print(f"Artist: {artist}")
+    print(f"Title: {title}")
+
     data = {
         "chat_id": chat_id,
+        "title": title,
+        "performer": artist,
         "caption": "@TRTOPMUSIC"
     }
 
@@ -44,7 +70,10 @@ for file in glob.glob("uploads/*.mp3"):
         result = response.json()
 
         if result.get("ok"):
-            print(f"Sent successfully: {file}")
+
+            print(
+                f"Sent successfully: {file}"
+            )
 
             os.remove(file)
 
@@ -52,12 +81,15 @@ for file in glob.glob("uploads/*.mp3"):
                 os.remove(cover)
 
         else:
+
             raise Exception(
                 f"Telegram error: {response.text}"
             )
 
     finally:
+
         audio.close()
 
         if cover_file:
             cover_file.close()
+
