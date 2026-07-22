@@ -2,6 +2,7 @@ import os
 import glob
 import requests
 from mutagen.easyid3 import EasyID3
+from mutagen import File
 
 token = os.environ["BOT_TOKEN"]
 chat_id = os.environ["CHAT_ID"]
@@ -16,7 +17,7 @@ for file in glob.glob("uploads/*.mp3"):
 
     cover = f"covers/{filename}.jpg"
 
-    # خواندن تگ‌های MP3
+    # خواندن Artist و Title
     try:
         tags = EasyID3(file)
 
@@ -36,13 +37,23 @@ for file in glob.glob("uploads/*.mp3"):
         artist = "Unknown Artist"
         title = filename
 
+    # خواندن مدت زمان آهنگ
+    audio_info = File(file)
+
+    if audio_info and audio_info.info:
+        duration = int(audio_info.info.length)
+    else:
+        duration = 0
+
     print(f"Artist: {artist}")
     print(f"Title: {title}")
+    print(f"Duration: {duration} seconds")
 
     data = {
         "chat_id": chat_id,
         "title": title,
         "performer": artist,
+        "duration": duration,
         "caption": "@TRTOPMUSIC"
     }
 
