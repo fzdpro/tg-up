@@ -41,9 +41,9 @@ jobs:
               "$cover" 2>/dev/null || true
           done
 
-      - name: Install Python Requests
+      - name: Install Python Libraries
         run: |
-          pip install requests
+          pip install requests mutagen
 
       - name: Send files to Telegram
         env:
@@ -54,6 +54,7 @@ jobs:
           import os
           import glob
           import requests
+          from mutagen.easyid3 import EasyID3
 
           token = os.environ["BOT_TOKEN"]
           chat_id = os.environ["CHAT_ID"]
@@ -68,8 +69,33 @@ jobs:
 
               cover = f"covers/{filename}.jpg"
 
+              # خواندن تگ‌های MP3
+              try:
+                  tags = EasyID3(file)
+
+                  artist = tags.get(
+                      "artist",
+                      ["Unknown Artist"]
+                  )[0]
+
+                  title = tags.get(
+                      "title",
+                      [filename]
+                  )[0]
+
+              except Exception as e:
+                  print(f"Could not read tags: {e}")
+
+                  artist = "Unknown Artist"
+                  title = filename
+
+              print(f"Artist: {artist}")
+              print(f"Title: {title}")
+
               data = {
                   "chat_id": chat_id,
+                  "title": title,
+                  "performer": artist,
                   "caption": "@TRTOPMUSIC"
               }
 
@@ -97,7 +123,10 @@ jobs:
                   result = response.json()
 
                   if result.get("ok"):
-                      print(f"Sent successfully: {file}")
+
+                      print(
+                          f"Sent successfully: {file}"
+                      )
 
                       os.remove(file)
 
@@ -105,15 +134,18 @@ jobs:
                           os.remove(cover)
 
                   else:
+
                       raise Exception(
                           f"Telegram error: {response.text}"
                       )
 
               finally:
+
                   audio.close()
 
                   if cover_file:
                       cover_file.close()
+
           PY
 
           python send.py
