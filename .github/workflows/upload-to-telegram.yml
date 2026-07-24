@@ -13,13 +13,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
+
 
       - name: Install FFmpeg
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
+
 
       - name: Extract Covers
         run: |
@@ -41,174 +44,644 @@ jobs:
               "$cover" 2>/dev/null || true
           done
 
+
       - name: Install Python Libraries
         run: |
           pip install requests mutagen
+
 
       - name: Send files to Telegram
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
+
         run: |
+
           cat > send.py << 'PY'
+
           import os
           import glob
+          import re
+          import subprocess
           import requests
+
           from mutagen.easyid3 import EasyID3
           from mutagen import File
+
 
           token = os.environ["BOT_TOKEN"]
           chat_id = os.environ["CHAT_ID"]
 
-          audio_url = f"https://api.telegram.org/bot{token}/sendAudio"
-          voice_url = f"https://api.telegram.org/bot{token}/sendVoice"
+
+          audio_url = (
+              f"https://api.telegram.org/"
+              f"bot{token}/sendAudio"
+          )
 
 
-          # ارسال فایل‌های MP3
-          for file in glob.glob("uploads/*.mp3"):
+          voice_url = (
+              f"https://api.telegram.org/"
+              f"bot{token}/sendVoice"
+          )
+
+
+          # =========================================
+          # Convert Time To Seconds
+          # =========================================
+
+          def time_to_seconds(value):
+
+              parts = value.split(":")
+
+              if len(parts) == 2:
+
+                  minutes = int(parts[0])
+                  seconds = float(parts[1])
+
+                  return (
+                      minutes * 60
+                      + seconds
+                  )
+
+              return float(value)
+
+
+          # =========================================
+          # Extract Voice Time From Filename
+          #
+          # Supported:
+          #
+          # [01:23.450-01:53.450]
+          #
+          # [01:23.450]
+          #
+          # =========================================
+
+          def extract_voice_times(filename):
+
+              pattern = (
+                  r"\["
+                  r"(\d{1,3}:\d{2}(?:\.\d{1,3})?)"
+                  r"(?:-"
+                  r"(\d{1,3}:\d{2}(?:\.\d{1,3})?)"
+                  r")?"
+                  r"\]"
+              )
+
+
+              match = re.search(
+                  pattern,
+                  filename
+              )
+
+
+              if not match:
+
+                  return None
+
+
+              start_time =
+                  time_to_seconds(
+                      match.group(1)
+                  )
+
+
+              if match.group(2):
+
+                  end_time =
+                      time_to_seconds(
+                          match.group(2)
+                      )
+
+              else:
+
+                  end_time =
+                      start_time + 30
+
+
+              if end_time <= start_time:
+
+                  print(
+                      "Invalid voice time range"
+                  )
+
+                  return None
+
+
+              return (
+                  start_time,
+                  end_time
+              )
+
+
+          # =========================================
+          # Create OGG Opus Voice
+          # =========================================
+
+          def create_voice(
+              mp3_file,
+              voice_file,
+              start_time,
+              end_time
+          ):
+
+              duration =
+                  end_time - start_time
+
+
+              print(
+                  f"Creating voice:"
+                  f" {start_time:.3f}s ->"
+                  f" {end_time:.3f}s"
+              )
+
+
+              if duration > 2:
+
+                  fade_start =
+                      duration - 2
+
+                  audio_filter = (
+                      f"afade=t=out:"
+                      f"st={fade_start:.3f}:"
+                      f"d=2"
+                  )
+
+              else:
+
+                  audio_filter = "anull"
+
+
+              command = [
+
+                  "ffmpeg",
+
+                  "-y",
+
+                  "-i",
+                  mp3_file,
+
+                  "-ss",
+                  f"{start_time:.3f}",
+
+                  "-t",
+                  f"{duration:.3f}",
+
+                  "-vn",
+
+                  "-c:a",
+                  "libopus",
+
+                  "-b:a",
+                  "128k",
+
+                  "-vbr",
+                  "on",
+
+                  "-application",
+                  "voip",
+
+                  "-af",
+                  audio_filter,
+
+                  voice_file
+
+              ]
+
+
+              result =
+                  subprocess.run(
+                      command,
+                      stdout=subprocess.PIPE,
+                      stderr=subprocess.PIPE
+                  )
+
+
+              if result.returncode != 0:
+
+                  print(
+                      result.stderr.decode(
+                          errors="ignore"
+                      )
+                  )
+
+                  raise Exception(
+                      "FFmpeg voice creation failed"
+                  )
+
+
+          # =========================================
+          # Send MP3 Files
+          # =========================================
+
+          for file in glob.glob(
+              "uploads/*.mp3"
+          ):
+
 
               filename = os.path.splitext(
                   os.path.basename(file)
               )[0]
 
-              cover = f"covers/{filename}.jpg"
+
+              cover =
+                  f"covers/{filename}.jpg"
+
 
               try:
-                  tags = EasyID3(file)
 
-                  artist = tags.get(
-                      "artist",
-                      ["Unknown Artist"]
-                  )[0]
+                  tags =
+                      EasyID3(file)
 
-                  title = tags.get(
-                      "title",
-                      [filename]
-                  )[0]
+
+                  artist =
+                      tags.get(
+                          "artist",
+                          ["Unknown Artist"]
+                      )[0]
+
+
+                  title =
+                      tags.get(
+                          "title",
+                          [filename]
+                      )[0]
+
 
               except Exception as e:
-                  print(f"Could not read tags: {e}")
 
-                  artist = "Unknown Artist"
-                  title = filename
-
-              audio_info = File(file)
-
-              if audio_info and audio_info.info:
-                  duration = int(audio_info.info.length)
-              else:
-                  duration = 0
-
-              print(f"Artist: {artist}")
-              print(f"Title: {title}")
-              print(f"Duration: {duration} seconds")
-
-              data = {
-                  "chat_id": chat_id,
-                  "title": title,
-                  "performer": artist,
-                  "duration": duration,
-                  "caption": "@TRTOPMUSIC"
-              }
-
-              audio = open(file, "rb")
-
-              files = {
-                  "audio": audio
-              }
-
-              cover_file = None
-
-              if os.path.exists(cover):
-                  cover_file = open(cover, "rb")
-                  files["thumbnail"] = cover_file
-
-              try:
-                  response = requests.post(
-                      audio_url,
-                      data=data,
-                      files=files
+                  print(
+                      f"Could not read tags: {e}"
                   )
 
-                  print(response.text)
 
-                  result = response.json()
+                  artist =
+                      "Unknown Artist"
 
-                  if result.get("ok"):
 
-                      print(
-                          f"MP3 sent successfully: {file}"
+                  title =
+                      filename
+
+
+              audio_info =
+                  File(file)
+
+
+              if (
+                  audio_info
+                  and audio_info.info
+              ):
+
+                  duration =
+                      int(
+                          audio_info.info.length
                       )
 
-                      os.remove(file)
+              else:
 
-                      if os.path.exists(cover):
-                          os.remove(cover)
+                  duration =
+                      0
 
-                  else:
+
+              print(
+                  f"Artist: {artist}"
+              )
+
+
+              print(
+                  f"Title: {title}"
+              )
+
+
+              print(
+                  f"Duration: {duration} seconds"
+              )
+
+
+              # =================================
+              # Send Original MP3
+              # =================================
+
+              data = {
+
+                  "chat_id":
+                      chat_id,
+
+                  "title":
+                      title,
+
+                  "performer":
+                      artist,
+
+                  "duration":
+                      duration,
+
+                  "caption":
+                      "@TRTOPMUSIC"
+
+              }
+
+
+              audio =
+                  open(
+                      file,
+                      "rb"
+                  )
+
+
+              files = {
+
+                  "audio":
+                      audio
+
+              }
+
+
+              cover_file =
+                  None
+
+
+              if os.path.exists(
+                  cover
+              ):
+
+                  cover_file =
+                      open(
+                          cover,
+                          "rb"
+                      )
+
+
+                  files[
+                      "thumbnail"
+                  ] =
+                      cover_file
+
+
+              try:
+
+                  response =
+                      requests.post(
+                          audio_url,
+                          data=data,
+                          files=files
+                      )
+
+
+                  print(
+                      response.text
+                  )
+
+
+                  result =
+                      response.json()
+
+
+                  if not result.get(
+                      "ok"
+                  ):
 
                       raise Exception(
-                          f"Telegram error: {response.text}"
+                          f"Telegram error:"
+                          f" {response.text}"
                       )
+
+
+                  print(
+                      f"MP3 sent successfully:"
+                      f" {file}"
+                  )
+
 
               finally:
 
                   audio.close()
 
+
                   if cover_file:
+
                       cover_file.close()
 
 
-          # ارسال فایل‌های OGG به‌صورت Voice
-          for file in glob.glob("uploads/*.ogg"):
+              # =================================
+              # Create And Send Voice
+              # =================================
 
-              filename = os.path.splitext(
-                  os.path.basename(file)
-              )[0]
+              voice_times =
+                  extract_voice_times(
+                      os.path.basename(file)
+                  )
+
+
+              if voice_times:
+
+                  start_time,
+                  end_time =
+                      voice_times
+
+
+                  voice_file =
+                      f"/tmp/{filename}_voice.ogg"
+
+
+                  try:
+
+                      create_voice(
+                          file,
+                          voice_file,
+                          start_time,
+                          end_time
+                      )
+
+
+                      voice =
+                          open(
+                              voice_file,
+                              "rb"
+                          )
+
+
+                      voice_files = {
+
+                          "voice":
+                              voice
+
+                      }
+
+
+                      voice_data = {
+
+                          "chat_id":
+                              chat_id,
+
+                          "caption":
+                              artist
+
+                      }
+
+
+                      try:
+
+                          response =
+                              requests.post(
+                                  voice_url,
+                                  data=voice_data,
+                                  files=voice_files
+                              )
+
+
+                          print(
+                              response.text
+                          )
+
+
+                          result =
+                              response.json()
+
+
+                          if not result.get(
+                              "ok"
+                          ):
+
+                              raise Exception(
+                                  f"Telegram voice error:"
+                                  f" {response.text}"
+                              )
+
+
+                          print(
+                              "Voice sent successfully"
+                          )
+
+
+                      finally:
+
+                          voice.close()
+
+
+                  finally:
+
+                      if os.path.exists(
+                          voice_file
+                      ):
+
+                          os.remove(
+                              voice_file
+                          )
+
+
+              else:
+
+                  print(
+                      "No voice time found."
+                      " Skipping voice creation."
+                  )
+
+
+              # =================================
+              # Remove Processed Files
+              # =================================
+
+              os.remove(file)
+
+
+              if os.path.exists(
+                  cover
+              ):
+
+                  os.remove(cover)
+
+
+          # =========================================
+          # Send OGG Files As Telegram Voice
+          # =========================================
+
+          for file in glob.glob(
+              "uploads/*.ogg"
+          ):
+
+
+              filename =
+                  os.path.splitext(
+                      os.path.basename(file)
+                  )[0]
+
 
               print(
                   f"Sending voice: {file}"
               )
 
+
               print(
                   f"Caption: {filename}"
               )
 
-              voice = open(file, "rb")
 
-              files = {
-                  "voice": voice
-              }
-
-              data = {
-                  "chat_id": chat_id,
-                  "caption": filename
-              }
-
-              try:
-                  response = requests.post(
-                      voice_url,
-                      data=data,
-                      files=files
+              voice =
+                  open(
+                      file,
+                      "rb"
                   )
 
-                  print(response.text)
 
-                  result = response.json()
+              files = {
 
-                  if result.get("ok"):
+                  "voice":
+                      voice
 
-                      print(
-                          f"Voice sent successfully: {file}"
+              }
+
+
+              data = {
+
+                  "chat_id":
+                      chat_id,
+
+                  "caption":
+                      filename
+
+              }
+
+
+              try:
+
+                  response =
+                      requests.post(
+                          voice_url,
+                          data=data,
+                          files=files
                       )
 
+
+                  print(
+                      response.text
+                  )
+
+
+                  result =
+                      response.json()
+
+
+                  if result.get(
+                      "ok"
+                  ):
+
+                      print(
+                          f"Voice sent successfully:"
+                          f" {file}"
+                      )
+
+
                       os.remove(file)
+
 
                   else:
 
                       raise Exception(
-                          f"Telegram error: {response.text}"
+                          f"Telegram error:"
+                          f" {response.text}"
                       )
+
 
               finally:
 
@@ -217,15 +690,26 @@ jobs:
 
           PY
 
+
           python send.py
+
 
       - name: Delete sent files from repository
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git config user.name \
+            "github-actions[bot]"
+
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
 
           git add -A
 
-          git commit -m "Remove processed files" || exit 0
+
+          git commit \
+            -m "Remove processed files" \
+            || exit 0
+
 
           git push
