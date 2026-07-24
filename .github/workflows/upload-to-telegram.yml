@@ -22,6 +22,29 @@ jobs:
         uses: actions/checkout@v4
 
 
+      - name: Wait for voice settings
+
+        run: |
+
+          echo "Waiting for voice settings..."
+
+          sleep 15
+
+          git fetch origin main
+
+          git reset --hard origin/main
+
+          echo "Latest repository state loaded"
+
+          echo "Uploads:"
+
+          ls -la uploads || true
+
+          echo "Voice settings:"
+
+          ls -la voice-settings || true
+
+
       - name: Install FFmpeg
 
         run: |
@@ -118,7 +141,7 @@ jobs:
 
 
           # ==================================================
-          # Send MP3 Files
+          # SEND MP3 FILES
           # ==================================================
 
 
@@ -138,10 +161,6 @@ jobs:
               )
 
 
-              # ------------------------------------------
-              # CORRECT VOICE SETTINGS PATH
-              # ------------------------------------------
-
               metadata_file = (
                   f"voice-settings/"
                   f"{filename}.json"
@@ -153,6 +172,11 @@ jobs:
               voice_start = "00:00:000"
 
               voice_duration = ""
+
+
+              # ------------------------------------------
+              # LOAD VOICE SETTINGS
+              # ------------------------------------------
 
 
               if os.path.exists(
@@ -172,16 +196,17 @@ jobs:
                           )
 
 
-                      # --------------------------------
-                      # CORRECT KEYS FROM WORKER
-                      # --------------------------------
+                      print(
+                          f"Loaded voice settings: "
+                          f"{config}"
+                      )
 
-                      voice_enabled = (
+
+                      voice_enabled = bool(
                           config.get(
                               "enabled",
                               False
                           )
-                          is True
                       )
 
 
@@ -210,6 +235,13 @@ jobs:
                       print(
                           f"Could not read metadata: {e}"
                       )
+
+              else:
+
+                  print(
+                      f"No voice settings found: "
+                      f"{metadata_file}"
+                  )
 
 
               print(
@@ -399,6 +431,11 @@ jobs:
 
               if voice_enabled:
 
+                  print(
+                      "Voice upload is ENABLED"
+                  )
+
+
                   try:
 
                       voice_duration_seconds = (
@@ -501,12 +538,22 @@ jobs:
                       ]
 
 
+                      print(
+                          "Running FFmpeg..."
+                      )
+
+
                       subprocess.run(
 
                           ffmpeg_command,
 
                           check=True
 
+                      )
+
+
+                      print(
+                          "Voice file created"
                       )
 
 
@@ -549,9 +596,7 @@ jobs:
 
 
                           print(
-
                               response.text
-
                           )
 
 
