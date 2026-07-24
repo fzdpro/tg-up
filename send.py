@@ -10,6 +10,7 @@ chat_id = os.environ["CHAT_ID"]
 audio_url = f"https://api.telegram.org/bot{token}/sendAudio"
 voice_url = f"https://api.telegram.org/bot{token}/sendVoice"
 
+
 # ارسال فایل‌های MP3
 for file in glob.glob("uploads/*.mp3"):
 
@@ -108,7 +109,17 @@ for file in glob.glob("uploads/*.mp3"):
 # ارسال فایل‌های OGG به‌صورت Voice
 for file in glob.glob("uploads/*.ogg"):
 
-    print(f"Sending voice: {file}")
+    filename = os.path.splitext(
+        os.path.basename(file)
+    )[0]
+
+    print(
+        f"Sending voice: {file}"
+    )
+
+    print(
+        f"Caption: {filename}"
+    )
 
     voice = open(file, "rb")
 
@@ -117,7 +128,8 @@ for file in glob.glob("uploads/*.ogg"):
     }
 
     data = {
-        "chat_id": chat_id
+        "chat_id": chat_id,
+        "caption": filename
     }
 
     try:
@@ -148,4 +160,5 @@ for file in glob.glob("uploads/*.ogg"):
     finally:
 
         voice.close()
+
 
