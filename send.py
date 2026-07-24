@@ -3,6 +3,7 @@ import os
 import glob
 import subprocess
 import requests
+import json
 
 from mutagen.easyid3 import EasyID3
 from mutagen import File
@@ -25,36 +26,6 @@ voice_url = (
 )
 
 
-# ==================================================
-# VOICE TIME SETTINGS
-# ==================================================
-#
-# Format:
-# MINUTE:SECOND:MILLISECOND
-#
-# Example:
-#
-# 00:48:000
-#
-# means:
-#
-# 0 minutes
-# 48 seconds
-# 000 milliseconds
-#
-# ==================================================
-
-
-start_time = "00:48:000"
-
-end_time = "01:18:000"
-
-
-# ==================================================
-# Convert Time
-# ==================================================
-
-
 def time_to_seconds(time_string):
 
     minutes, seconds, milliseconds = map(
@@ -69,46 +40,8 @@ def time_to_seconds(time_string):
     )
 
 
-start_seconds = time_to_seconds(
-    start_time
-)
-
-
-end_seconds = time_to_seconds(
-    end_time
-)
-
-
-voice_duration = (
-    end_seconds -
-    start_seconds
-)
-
-
-if voice_duration <= 0:
-
-    raise ValueError(
-        "End time must be greater than start time"
-    )
-
-
-print(
-    f"Voice start: {start_time}"
-)
-
-
-print(
-    f"Voice end: {end_time}"
-)
-
-
-print(
-    f"Voice duration: {voice_duration:.3f} seconds"
-)
-
-
 # ==================================================
-# Send MP3 Files
+# SEND MP3 FILES
 # ==================================================
 
 
@@ -126,6 +59,112 @@ for file in glob.glob(
         f"covers/"
         f"{filename}.jpg"
     )
+
+
+    metadata_file = (
+        f"voice-settings/"
+        f"{filename}.json"
+    )
+
+
+    voice_enabled = False
+
+    voice_start = "00:00:000"
+
+    voice_duration = ""
+
+
+    # ------------------------------------------
+    # LOAD VOICE SETTINGS
+    # ------------------------------------------
+
+
+    if os.path.exists(
+        metadata_file
+    ):
+
+        try:
+
+            with open(
+                metadata_file,
+                "r",
+                encoding="utf-8"
+            ) as metadata:
+
+                config = json.load(
+                    metadata
+                )
+
+
+            print(
+                f"Loaded voice settings: "
+                f"{config}"
+            )
+
+
+            voice_enabled = bool(
+                config.get(
+                    "enabled",
+                    False
+                )
+            )
+
+
+            voice_start = (
+                config.get(
+                    "start",
+                    "00:00:000"
+                )
+                or
+                "00:00:000"
+            )
+
+
+            voice_duration = (
+                config.get(
+                    "duration",
+                    ""
+                )
+                or
+                ""
+            )
+
+
+        except Exception as e:
+
+            print(
+                f"Could not read metadata: {e}"
+            )
+
+    else:
+
+        print(
+            f"No voice settings found: "
+            f"{metadata_file}"
+        )
+
+
+    print(
+        f"Voice enabled: "
+        f"{voice_enabled}"
+    )
+
+
+    print(
+        f"Voice start: "
+        f"{voice_start}"
+    )
+
+
+    print(
+        f"Voice duration: "
+        f"{voice_duration}"
+    )
+
+
+    # ------------------------------------------
+    # READ MP3 TAGS
+    # ------------------------------------------
 
 
     try:
@@ -164,9 +203,11 @@ for file in glob.glob(
 
 
     if (
+
         audio_info
         and
         audio_info.info
+
     ):
 
         duration = int(
@@ -178,23 +219,8 @@ for file in glob.glob(
         duration = 0
 
 
-    print(
-        f"Artist: {artist}"
-    )
-
-
-    print(
-        f"Title: {title}"
-    )
-
-
-    print(
-        f"Duration: {duration} seconds"
-    )
-
-
     # ==================================================
-    # 1. Send Original MP3
+    # 1. SEND ORIGINAL MP3
     # ==================================================
 
 
@@ -229,7 +255,9 @@ for file in glob.glob(
     cover_file = None
 
 
-    if os.path.exists(cover):
+    if os.path.exists(
+        cover
+    ):
 
         cover_file = open(
             cover,
@@ -265,7 +293,9 @@ for file in glob.glob(
         )
 
 
-        if not result.get("ok"):
+        if not result.get(
+            "ok"
+        ):
 
             raise Exception(
 
@@ -295,188 +325,261 @@ for file in glob.glob(
 
 
     # ==================================================
-    # 2. Create Voice From MP3
+    # 2. CREATE AND SEND VOICE
     # ==================================================
 
 
-    voice_file = (
-        f"/tmp/"
-        f"{filename}_voice.ogg"
-    )
-
-
-    print(
-        f"Creating voice: "
-        f"{voice_file}"
-    )
-
-
-    fade_start = max(
-        voice_duration - 2,
-        0
-    )
-
-
-    ffmpeg_command = [
-
-        "ffmpeg",
-
-        "-y",
-
-        "-ss",
-
-        str(start_seconds),
-
-        "-i",
-
-        file,
-
-        "-t",
-
-        str(voice_duration),
-
-        "-vn",
-
-        "-af",
-
-        (
-            f"afade="
-            f"t=out:"
-            f"st={fade_start}:"
-            f"d=2"
-        ),
-
-        "-c:a",
-
-        "libopus",
-
-        "-b:a",
-
-        "128k",
-
-        "-application",
-
-        "audio",
-
-        voice_file
-
-    ]
-
-
-    subprocess.run(
-
-        ffmpeg_command,
-
-        check=True
-
-    )
-
-
-    # ==================================================
-    # 3. Send Voice
-    # ==================================================
-
-
-    voice = open(
-
-        voice_file,
-
-        "rb"
-
-    )
-
-
-    voice_files = {
-
-        "voice": voice
-
-    }
-
-
-    voice_data = {
-
-        "chat_id": chat_id,
-
-        "caption": artist
-
-    }
-
-
-    try:
-
-        response = requests.post(
-
-            voice_url,
-
-            data=voice_data,
-
-            files=voice_files
-
-        )
-
+    if voice_enabled:
 
         print(
-
-            response.text
-
+            "Voice upload is ENABLED"
         )
 
 
-        result = (
+        try:
 
-            response.json()
-
-        )
-
-
-        if not result.get("ok"):
-
-            raise Exception(
-
-                "Telegram error: "
-                +
-                response.text
-
+            voice_duration_seconds = (
+                float(
+                    voice_duration
+                )
             )
 
 
-        print(
+        except Exception:
 
-            f"Voice sent successfully: "
-            f"{voice_file}"
+            print(
+                "Invalid voice duration"
+            )
 
-        )
-
-
-    finally:
-
-        voice.close()
+            voice_duration_seconds = 0
 
 
-        if os.path.exists(
-            voice_file
-        ):
+        if voice_duration_seconds <= 0:
 
-            os.remove(
+            print(
+                "Voice skipped: "
+                "invalid duration"
+            )
+
+        else:
+
+            start_seconds = (
+                time_to_seconds(
+                    voice_start
+                )
+            )
+
+
+            voice_file = (
+                f"/tmp/"
+                f"{filename}_voice.ogg"
+            )
+
+
+            print(
+                f"Creating voice: "
+                f"{voice_file}"
+            )
+
+
+            fade_start = max(
+                voice_duration_seconds - 2,
+                0
+            )
+
+
+            ffmpeg_command = [
+
+                "ffmpeg",
+
+                "-y",
+
+                "-ss",
+
+                str(start_seconds),
+
+                "-i",
+
+                file,
+
+                "-t",
+
+                str(
+                    voice_duration_seconds
+                ),
+
+                "-vn",
+
+                "-af",
+
+                (
+
+                    f"afade="
+                    f"t=out:"
+                    f"st={fade_start}:"
+                    f"d=2"
+
+                ),
+
+                "-c:a",
+
+                "libopus",
+
+                "-b:a",
+
+                "128k",
+
+                "-application",
+
+                "audio",
+
                 voice_file
+
+            ]
+
+
+            print(
+                "Running FFmpeg..."
             )
 
 
+            subprocess.run(
+
+                ffmpeg_command,
+
+                check=True
+
+            )
+
+
+            print(
+                "Voice file created"
+            )
+
+
+            voice = open(
+
+                voice_file,
+
+                "rb"
+
+            )
+
+
+            voice_files = {
+
+                "voice": voice
+
+            }
+
+
+            voice_data = {
+
+                "chat_id": chat_id,
+
+                "caption": artist
+
+            }
+
+
+            try:
+
+                response = requests.post(
+
+                    voice_url,
+
+                    data=voice_data,
+
+                    files=voice_files
+
+                )
+
+
+                print(
+                    response.text
+                )
+
+
+                result = (
+                    response.json()
+                )
+
+
+                if not result.get(
+                    "ok"
+                ):
+
+                    raise Exception(
+
+                        "Telegram error: "
+                        +
+                        response.text
+
+                    )
+
+
+                print(
+
+                    f"Voice sent successfully: "
+                    f"{voice_file}"
+
+                )
+
+
+            finally:
+
+                voice.close()
+
+
+                if os.path.exists(
+                    voice_file
+                ):
+
+                    os.remove(
+                        voice_file
+                    )
+
+
+    else:
+
+        print(
+
+            "Voice disabled. "
+            "Skipping voice upload."
+
+        )
+
+
     # ==================================================
-    # Remove MP3 And Cover
+    # REMOVE MP3, COVER AND SETTINGS
     # ==================================================
 
 
-    os.remove(file)
+    os.remove(
+        file
+    )
 
 
-    if os.path.exists(cover):
+    if os.path.exists(
+        cover
+    ):
 
-        os.remove(cover)
+        os.remove(
+            cover
+        )
+
+
+    if os.path.exists(
+        metadata_file
+    ):
+
+        os.remove(
+            metadata_file
+        )
 
 
 # ==================================================
-# Send Manually Uploaded OGG Files
+# SEND MANUALLY UPLOADED OGG FILES
 # ==================================================
 
 
@@ -556,7 +659,9 @@ for file in glob.glob(
         result = response.json()
 
 
-        if result.get("ok"):
+        if result.get(
+            "ok"
+        ):
 
             print(
 
@@ -566,8 +671,9 @@ for file in glob.glob(
             )
 
 
-            os.remove(file)
-
+            os.remove(
+                file
+            )
 
         else:
 
