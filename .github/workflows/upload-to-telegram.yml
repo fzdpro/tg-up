@@ -4,21 +4,26 @@ on:
   push:
     paths:
       - "uploads/**"
+      - "voice-settings/**"
 
 permissions:
   contents: write
 
 jobs:
+
   send:
+
     runs-on: ubuntu-latest
 
     steps:
 
       - name: Checkout
+
         uses: actions/checkout@v4
 
 
       - name: Install FFmpeg
+
         run: |
 
           sudo apt-get update
@@ -27,6 +32,7 @@ jobs:
 
 
       - name: Extract Covers
+
         run: |
 
           mkdir -p covers
@@ -52,12 +58,14 @@ jobs:
 
 
       - name: Install Python Libraries
+
         run: |
 
           pip install requests mutagen
 
 
       - name: Send files to Telegram
+
         env:
 
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
@@ -130,8 +138,12 @@ jobs:
               )
 
 
+              # ------------------------------------------
+              # CORRECT VOICE SETTINGS PATH
+              # ------------------------------------------
+
               metadata_file = (
-                  f"uploads/"
+                  f"voice-settings/"
                   f"{filename}.json"
               )
 
@@ -160,9 +172,13 @@ jobs:
                           )
 
 
+                      # --------------------------------
+                      # CORRECT KEYS FROM WORKER
+                      # --------------------------------
+
                       voice_enabled = (
                           config.get(
-                              "voiceEnabled",
+                              "enabled",
                               False
                           )
                           is True
@@ -171,17 +187,21 @@ jobs:
 
                       voice_start = (
                           config.get(
-                              "voiceStart",
+                              "start",
                               "00:00:000"
                           )
+                          or
+                          "00:00:000"
                       )
 
 
                       voice_duration = (
                           config.get(
-                              "voiceDuration",
+                              "duration",
                               ""
                           )
+                          or
+                          ""
                       )
 
 
@@ -208,6 +228,11 @@ jobs:
                   f"Voice duration: "
                   f"{voice_duration}"
               )
+
+
+              # ------------------------------------------
+              # READ MP3 TAGS
+              # ------------------------------------------
 
 
               try:
@@ -263,7 +288,7 @@ jobs:
 
 
               # ==================================================
-              # 1. Send Original MP3
+              # 1. SEND ORIGINAL MP3
               # ==================================================
 
 
@@ -368,7 +393,7 @@ jobs:
 
 
               # ==================================================
-              # 2. Create And Send Voice
+              # 2. CREATE AND SEND VOICE
               # ==================================================
 
 
@@ -383,7 +408,7 @@ jobs:
                       )
 
 
-                  except:
+                  except Exception:
 
                       print(
                           "Invalid voice duration"
@@ -531,9 +556,7 @@ jobs:
 
 
                           result = (
-
                               response.json()
-
                           )
 
 
@@ -583,7 +606,7 @@ jobs:
 
 
               # ==================================================
-              # Remove MP3, Cover And Metadata
+              # REMOVE MP3, COVER AND SETTINGS
               # ==================================================
 
 
@@ -611,7 +634,7 @@ jobs:
 
 
           # ==================================================
-          # Send Manually Uploaded OGG Files
+          # SEND MANUALLY UPLOADED OGG FILES
           # ==================================================
 
 
@@ -730,10 +753,12 @@ jobs:
 
 
       - name: Delete sent files from repository
+
         run: |
 
           git config user.name \
             "github-actions[bot]"
+
 
           git config user.email \
             "41898282+github-actions[bot]@users.noreply.github.com"
