@@ -26,12 +26,15 @@ voice_url = (
 )
 
 
-def time_to_seconds(time_string):
+def time_to_seconds(value):
 
-    minutes, seconds, milliseconds = map(
-        int,
-        time_string.split(":")
-    )
+    parts = value.split(":")
+
+    minutes = int(parts[0])
+
+    seconds = int(parts[1])
+
+    milliseconds = int(parts[2])
 
     return (
         minutes * 60
@@ -40,15 +43,9 @@ def time_to_seconds(time_string):
     )
 
 
-# ==================================================
-# SEND MP3 FILES
-# ==================================================
-
-
 for file in glob.glob(
     "uploads/*.mp3"
 ):
-
 
     filename = os.path.splitext(
         os.path.basename(file)
@@ -74,11 +71,6 @@ for file in glob.glob(
     voice_duration = ""
 
 
-    # ------------------------------------------
-    # LOAD VOICE SETTINGS
-    # ------------------------------------------
-
-
     if os.path.exists(
         metadata_file
     ):
@@ -97,16 +89,20 @@ for file in glob.glob(
 
 
             print(
-                f"Loaded voice settings: "
-                f"{config}"
+                "VOICE SETTINGS:"
+            )
+
+            print(
+                config
             )
 
 
-            voice_enabled = bool(
+            voice_enabled = (
                 config.get(
                     "enabled",
                     False
                 )
+                is True
             )
 
 
@@ -115,8 +111,6 @@ for file in glob.glob(
                     "start",
                     "00:00:000"
                 )
-                or
-                "00:00:000"
             )
 
 
@@ -125,23 +119,14 @@ for file in glob.glob(
                     "duration",
                     ""
                 )
-                or
-                ""
             )
 
 
-        except Exception as e:
+        except Exception as error:
 
             print(
-                f"Could not read metadata: {e}"
+                f"Settings error: {error}"
             )
-
-    else:
-
-        print(
-            f"No voice settings found: "
-            f"{metadata_file}"
-        )
 
 
     print(
@@ -162,39 +147,23 @@ for file in glob.glob(
     )
 
 
-    # ------------------------------------------
-    # READ MP3 TAGS
-    # ------------------------------------------
-
-
     try:
 
         tags = EasyID3(file)
-
 
         artist = tags.get(
             "artist",
             ["Unknown Artist"]
         )[0]
 
-
         title = tags.get(
             "title",
             [filename]
         )[0]
 
+    except:
 
-    except Exception as e:
-
-        print(
-            f"Could not read tags: {e}"
-        )
-
-
-        artist = (
-            "Unknown Artist"
-        )
-
+        artist = "Unknown Artist"
 
         title = filename
 
@@ -202,26 +171,14 @@ for file in glob.glob(
     audio_info = File(file)
 
 
-    if (
-
-        audio_info
-        and
-        audio_info.info
-
-    ):
-
-        duration = int(
-            audio_info.info.length
-        )
-
-    else:
-
-        duration = 0
+    duration = int(
+        audio_info.info.length
+    ) if audio_info and audio_info.info else 0
 
 
-    # ==================================================
-    # 1. SEND ORIGINAL MP3
-    # ==================================================
+    # ==========================================
+    # SEND MP3
+    # ==========================================
 
 
     data = {
@@ -264,7 +221,6 @@ for file in glob.glob(
             "rb"
         )
 
-
         files["thumbnail"] = (
             cover_file
         )
@@ -288,9 +244,7 @@ for file in glob.glob(
         )
 
 
-        result = (
-            response.json()
-        )
+        result = response.json()
 
 
         if not result.get(
@@ -298,20 +252,8 @@ for file in glob.glob(
         ):
 
             raise Exception(
-
-                "Telegram error: "
-                +
                 response.text
-
             )
-
-
-        print(
-
-            f"MP3 sent successfully: "
-            f"{file}"
-
-        )
 
 
     finally:
@@ -324,44 +266,24 @@ for file in glob.glob(
             cover_file.close()
 
 
-    # ==================================================
-    # 2. CREATE AND SEND VOICE
-    # ==================================================
+    # ==========================================
+    # SEND VOICE
+    # ==========================================
 
 
     if voice_enabled:
 
         print(
-            "Voice upload is ENABLED"
+            "VOICE IS ENABLED"
         )
 
 
         try:
 
-            voice_duration_seconds = (
-                float(
-                    voice_duration
-                )
+            voice_duration_seconds = float(
+                voice_duration
             )
 
-
-        except Exception:
-
-            print(
-                "Invalid voice duration"
-            )
-
-            voice_duration_seconds = 0
-
-
-        if voice_duration_seconds <= 0:
-
-            print(
-                "Voice skipped: "
-                "invalid duration"
-            )
-
-        else:
 
             start_seconds = (
                 time_to_seconds(
@@ -373,18 +295,6 @@ for file in glob.glob(
             voice_file = (
                 f"/tmp/"
                 f"{filename}_voice.ogg"
-            )
-
-
-            print(
-                f"Creating voice: "
-                f"{voice_file}"
-            )
-
-
-            fade_start = max(
-                voice_duration_seconds - 2,
-                0
             )
 
 
@@ -410,17 +320,6 @@ for file in glob.glob(
 
                 "-vn",
 
-                "-af",
-
-                (
-
-                    f"afade="
-                    f"t=out:"
-                    f"st={fade_start}:"
-                    f"d=2"
-
-                ),
-
                 "-c:a",
 
                 "libopus",
@@ -431,16 +330,11 @@ for file in glob.glob(
 
                 "-application",
 
-                "audio",
+                "voip",
 
                 voice_file
 
             ]
-
-
-            print(
-                "Running FFmpeg..."
-            )
 
 
             subprocess.run(
@@ -449,11 +343,6 @@ for file in glob.glob(
 
                 check=True
 
-            )
-
-
-            print(
-                "Voice file created"
             )
 
 
@@ -466,93 +355,79 @@ for file in glob.glob(
             )
 
 
-            voice_files = {
+            response = requests.post(
 
-                "voice": voice
+                voice_url,
 
-            }
+                data={
 
+                    "chat_id":
+                        chat_id,
 
-            voice_data = {
+                    "caption":
+                        artist
 
-                "chat_id": chat_id,
+                },
 
-                "caption": artist
+                files={
 
-            }
+                    "voice":
+                        voice
 
+                }
 
-            try:
-
-                response = requests.post(
-
-                    voice_url,
-
-                    data=voice_data,
-
-                    files=voice_files
-
-                )
+            )
 
 
-                print(
+            print(
+                response.text
+            )
+
+
+            result = response.json()
+
+
+            voice.close()
+
+
+            if not result.get(
+                "ok"
+            ):
+
+                raise Exception(
                     response.text
                 )
 
 
-                result = (
-                    response.json()
-                )
+            print(
+                "VOICE SENT SUCCESSFULLY"
+            )
 
 
-                if not result.get(
-                    "ok"
-                ):
-
-                    raise Exception(
-
-                        "Telegram error: "
-                        +
-                        response.text
-
-                    )
+            os.remove(
+                voice_file
+            )
 
 
-                print(
+        except Exception as error:
 
-                    f"Voice sent successfully: "
-                    f"{voice_file}"
+            print(
+                f"VOICE ERROR: {error}"
+            )
 
-                )
-
-
-            finally:
-
-                voice.close()
-
-
-                if os.path.exists(
-                    voice_file
-                ):
-
-                    os.remove(
-                        voice_file
-                    )
+            raise
 
 
     else:
 
         print(
-
-            "Voice disabled. "
-            "Skipping voice upload."
-
+            "VOICE DISABLED"
         )
 
 
-    # ==================================================
-    # REMOVE MP3, COVER AND SETTINGS
-    # ==================================================
+    # ==========================================
+    # DELETE PROCESSED FILES
+    # ==========================================
 
 
     os.remove(
@@ -578,116 +453,73 @@ for file in glob.glob(
         )
 
 
-# ==================================================
-# SEND MANUALLY UPLOADED OGG FILES
-# ==================================================
+# ==========================================
+# SEND OGG FILES
+# ==========================================
 
 
 for file in glob.glob(
-
     "uploads/*.ogg"
-
 ):
 
 
     filename = os.path.splitext(
-
         os.path.basename(file)
-
     )[0]
 
 
-    print(
-
-        f"Sending voice: {file}"
-
-    )
-
-
-    print(
-
-        f"Caption: {filename}"
-
-    )
-
-
     voice = open(
-
         file,
-
         "rb"
+    )
+
+
+    response = requests.post(
+
+        voice_url,
+
+        data={
+
+            "chat_id":
+                chat_id,
+
+            "caption":
+                filename
+
+        },
+
+        files={
+
+            "voice":
+                voice
+
+        }
 
     )
 
 
-    files = {
-
-        "voice": voice
-
-    }
+    print(
+        response.text
+    )
 
 
-    data = {
-
-        "chat_id": chat_id,
-
-        "caption": filename
-
-    }
+    result = response.json()
 
 
-    try:
-
-        response = requests.post(
-
-            voice_url,
-
-            data=data,
-
-            files=files
-
-        )
+    voice.close()
 
 
-        print(
+    if not result.get(
+        "ok"
+    ):
 
+        raise Exception(
             response.text
-
         )
 
 
-        result = response.json()
-
-
-        if result.get(
-            "ok"
-        ):
-
-            print(
-
-                f"Voice sent successfully: "
-                f"{file}"
-
-            )
-
-
-            os.remove(
-                file
-            )
-
-        else:
-
-            raise Exception(
-
-                "Telegram error: "
-                +
-                response.text
-
-            )
-
-
-    finally:
-
-        voice.close()
+    os.remove(
+        file
+    )
 
 
